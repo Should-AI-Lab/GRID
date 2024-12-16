@@ -35,7 +35,61 @@ pip install -r requirements.txt
 
 
 Training
+
+
 Dataset Preparation
+
+# Video Frame Grid Generation
+
+## Overview
+This tool helps convert sequential video frames into grid-layout images. It processes folders containing sequential frames and combines them into grid-format images.
+
+## Features
+- Flexible grid layout (m×n customizable)
+- Support for variable frame counts
+- Automatic multiple grid generation for long sequences
+- Smart frame number extraction and sorting
+- Robust error handling
+
+## Directory Structure
+input_directory/
+├── video1/
+│ ├── frame1.png
+│ ├── frame2.png
+│ └── ...
+├── video2/
+│ ├── frame1.png
+│ ├── frame2.png
+│ └── ...
+└── ...
+
+
+
+## Usage
+
+### Basic Usage
+```python
+python concat.py --input_dir /path/to/frames --output_dir /path/to/output
+Advanced Options
+python
+
+python concat.py \
+    --input_dir /path/to/frames \
+    --output_dir /path/to/output \
+    --grid_rows 4 \
+    --grid_cols 6 \
+    --frames_per_grid 24 \
+    --file_pattern "frame(\d+).png"
+
+Parameters
+input_dir: Directory containing frame folders
+output_dir: Output directory for grid images
+grid_rows: Number of rows in grid (default: 4)
+grid_cols: Number of columns in grid (default: 6)
+frames_per_grid: Number of frames per grid (default: 24)
+file_pattern: Regex pattern for frame filenames (default: "frame(\d+).png")
+
+
 Data Structure
 
 data/
