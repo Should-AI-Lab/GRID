@@ -106,8 +106,8 @@ def process_subset(image_paths, process_id, model_path, mode="multi_view"):
             print(f"Error processing {img_path}: {str(e)}")
 
 def main():
-    MODEL_PATH = "/path/to/glm" # put your glm-4v-9b weights here
-    IMAGE_DIR = ".source/vidconcat" # your final data directory
+    MODEL_PATH = "./models/glm" # put your glm-4v-9b weights here
+    IMAGE_DIR = "./vidconcat" # your final data directory
     
     image_paths = glob.glob(os.path.join(IMAGE_DIR, "*.png"))
     
