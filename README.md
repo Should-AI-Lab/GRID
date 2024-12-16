@@ -52,18 +52,6 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Dependencies
-```bash
-torch>=1.12
-transformers>=4.25.1
-diffusers>=0.16.1
-accelerate>=0.18.0
-opencv-python>=4.7.0
-numpy>=1.24.3
-pillow>=9.5.0
-tqdm>=4.65.0
-```
-
 ## Data Preparation Steps:
 
 ### 1. Initial Directory Structure:
