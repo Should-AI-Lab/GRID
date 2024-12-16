@@ -15,7 +15,8 @@ GRID introduces a novel paradigm that reframes visual generation tasks as grid l
 - **Preserved Capabilities**: Maintains strong image generation performance while expanding functionality
 
 [Architecture Diagram: GRID framework overview]
-[📄 Read our paper](./assets/fig-intro.pdf)
+
+img_url=./assets/fig-intro.pdf
 
 ## Installation
 
