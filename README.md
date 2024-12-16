@@ -1,3 +1,4 @@
+
 # GRID: Visual Layout Generation - A Novel Framework for Unified Visual Generation Tasks
 The official implementation of work "GRID: Visual Layout Generation".
 
@@ -18,37 +19,11 @@ GRID introduces a novel paradigm that reframes visual generation tasks as grid l
 
 ## Results
 
+https://github.com/user-attachments/assets/c5949f2b-9aeb-426e-abf6-7d95ed06e8be
 
-<table>
-  <tr>
-    <td align="center">
-      <p>0</p>
-      <img src="https://github.com/user-attachments/assets/360827f6-a141-4e6c-9a03-67ef0a4ae0e5" width="100%">
-    </td>
-    <td align="center">
-      <p>1</p>
-      <img src="https://github.com/user-attachments/assets/6f68b74c-7851-4c4e-82d4-730e1e4e50f9" width="100%">
-    </td>
-    <td align="center">
-      <p>2</p>
-      <img src="https://github.com/user-attachments/assets/08b97df2-aca8-49a7-b0e2-3310ffcb5251" width="100%">
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <p></p>
-      <img src="https://github.com/user-attachments/assets/46c2c2f4-5522-402c-96ea-f7fb40ec1331" width="100%">
-    </td>
-    <td align="center">
-      <p></p>
-      <img src="https://github.com/user-attachments/assets/9cc29fd9-02d2-4775-80aa-d3aee2308477" width="100%">
-    </td>
-    <td align="center">
-      <p></p>
-      <img src="https://github.com/user-attachments/assets/8e5ab2e6-35d8-4a0d-a3fc-3758756febd2" width="100%">
-    </td>
-  </tr>
-</table>
+due to upload limits of github, we compress our size, to see full size of each please refer to:
+
+[vid1](https://github.com/user-attachments/assets/360827f6-a141-4e6c-9a03-67ef0a4ae0e5) [vid2](https://github.com/user-attachments/assets/6f68b74c-7851-4c4e-82d4-730e1e4e50f9) [vid3](https://github.com/user-attachments/assets/08b97df2-aca8-49a7-b0e2-3310ffcb5251) [vid4](https://github.com/user-attachments/assets/46c2c2f4-5522-402c-96ea-f7fb40ec1331) [vid5](https://github.com/user-attachments/assets/9cc29fd9-02d2-4775-80aa-d3aee2308477) [vid6](https://github.com/user-attachments/assets/8e5ab2e6-35d8-4a0d-a3fc-3758756febd2) [vid7](https://github.com/user-attachments/assets/18a56da8-04d3-4fe4-9919-0e1a48dd0dd0)          
 
 
 
