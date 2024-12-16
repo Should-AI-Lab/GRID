@@ -16,21 +16,41 @@ GRID introduces a novel paradigm that reframes visual generation tasks as grid l
 - **Preserved Capabilities**: Maintains strong image generation performance while expanding functionality
 
 
-## 3D/4D Results
+## Results
 
-https://github.com/user-attachments/assets/360827f6-a141-4e6c-9a03-67ef0a4ae0e5
 
-https://github.com/user-attachments/assets/6f68b74c-7851-4c4e-82d4-730e1e4e50f9
+<table>
+  <tr>
+    <td align="center">
+      <p>0</p>
+      <img src="https://github.com/user-attachments/assets/360827f6-a141-4e6c-9a03-67ef0a4ae0e5" width="100%">
+    </td>
+    <td align="center">
+      <p>1</p>
+      <img src="https://github.com/user-attachments/assets/6f68b74c-7851-4c4e-82d4-730e1e4e50f9" width="100%">
+    </td>
+    <td align="center">
+      <p>2</p>
+      <img src="https://github.com/user-attachments/assets/08b97df2-aca8-49a7-b0e2-3310ffcb5251" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <p></p>
+      <img src="https://github.com/user-attachments/assets/46c2c2f4-5522-402c-96ea-f7fb40ec1331" width="100%">
+    </td>
+    <td align="center">
+      <p></p>
+      <img src="https://github.com/user-attachments/assets/9cc29fd9-02d2-4775-80aa-d3aee2308477" width="100%">
+    </td>
+    <td align="center">
+      <p></p>
+      <img src="https://github.com/user-attachments/assets/8e5ab2e6-35d8-4a0d-a3fc-3758756febd2" width="100%">
+    </td>
+  </tr>
+</table>
 
-https://github.com/user-attachments/assets/08b97df2-aca8-49a7-b0e2-3310ffcb5251
 
-https://github.com/user-attachments/assets/46c2c2f4-5522-402c-96ea-f7fb40ec1331
-
-https://github.com/user-attachments/assets/9cc29fd9-02d2-4775-80aa-d3aee2308477
-
-https://github.com/user-attachments/assets/8e5ab2e6-35d8-4a0d-a3fc-3758756febd2
-
-https://github.com/user-attachments/assets/18a56da8-04d3-4fe4-9919-0e1a48dd0dd0
 
 
 
