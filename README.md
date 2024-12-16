@@ -4,7 +4,7 @@ The official implementation of work "GRID: Visual Layout Generation".
 [![arXiv](https://img.shields.io/badge/arXiv-[paper_id]-b31b1b.svg)](https://arxiv.org/abs/[paper_id])
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-## Results
+## 3D/4D Results
 
 https://github.com/user-attachments/assets/360827f6-a141-4e6c-9a03-67ef0a4ae0e5
 
