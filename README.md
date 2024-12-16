@@ -18,8 +18,7 @@ GRID introduces a novel paradigm that reframes visual generation tasks as grid l
 
 
 ## Results
-
-https://github.com/user-attachments/assets/c5949f2b-9aeb-426e-abf6-7d95ed06e8be
+![GIF](https://github.com/user-attachments/assets/c5949f2b-9aeb-426e-abf6-7d95ed06e8be)
 
 due to upload limits of github, we compress our size, to see full size of each please refer to:
 
