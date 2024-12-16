@@ -9,14 +9,13 @@
 GRID introduces a novel paradigm that reframes visual generation tasks as grid layout problems. Built upon FLUX.1 architecture, our framework transforms temporal sequences into grid layouts, enabling image generation models to process visual sequences holistically. This approach achieves remarkable efficiency and versatility across diverse visual generation tasks.
 
 ### Key Features
-- **Efficient Inference**: 6-35× faster inference speeds compared to specialized models
+- **Efficient Inference**: up to 35× faster inference speeds compared to specialized models
 - **Resource Efficient**: Requires <1/1000 of computational resources  
 - **Versatile Applications**: Supports Text-to-Video, Image-to-Video, Multi-view Generation, and more
 - **Preserved Capabilities**: Maintains strong image generation performance while expanding functionality
 
-[Architecture Diagram: GRID framework overview]
-
-img_url=./assets/fig-intro.pdf
+![image](https://github.com/user-attachments/assets/e9f42567-5d73-4ba2-9479-740dd1155171)
+Figure 1: Architectural overview of GRID framework, demonstrating the transformation of temporal sequences into grid layouts for efficient visual generation.
 
 ## Installation
 
