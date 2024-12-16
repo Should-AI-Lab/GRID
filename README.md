@@ -25,8 +25,9 @@ Due to upload limits of github, we compress our size from 1024×1024 to 256×256
 [vid1](https://github.com/user-attachments/assets/360827f6-a141-4e6c-9a03-67ef0a4ae0e5) [vid2](https://github.com/user-attachments/assets/6f68b74c-7851-4c4e-82d4-730e1e4e50f9) [vid3](https://github.com/user-attachments/assets/08b97df2-aca8-49a7-b0e2-3310ffcb5251) [vid4](https://github.com/user-attachments/assets/46c2c2f4-5522-402c-96ea-f7fb40ec1331) [vid5](https://github.com/user-attachments/assets/9cc29fd9-02d2-4775-80aa-d3aee2308477) [vid6](https://github.com/user-attachments/assets/8e5ab2e6-35d8-4a0d-a3fc-3758756febd2) [vid7](https://github.com/user-attachments/assets/18a56da8-04d3-4fe4-9919-0e1a48dd0dd0)          
 
 
+![result](https://github.com/user-attachments/assets/df01f2da-1b73-44ab-a473-bfcd999a0c9b)
 
-
+From left to right: input cat video, and edited results of fox, tiger, and red panda transformations.
 
 
 
