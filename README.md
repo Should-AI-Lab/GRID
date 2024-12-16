@@ -128,14 +128,12 @@ GRID utilizes FLUX.1 architecture for training. You'll need:
 - FLUX.1-dev model access and license
 
 #### Setup Steps:
-1. Accept the model license at [black-forest-labs/FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev)
-2. Create .env file in project root
-3. Add your HuggingFace READ token: HF_TOKEN=your_token_here
+Accept the model license at [black-forest-labs/FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev), then follow the official setup guide in black-forest-labs/flux repository for deployment and model weights download.
 
 ### Training Configuration
 1. Copy example config:
 
-cp config/examples/train_lora_grid_24gb.yaml config/your_config.yaml
+cp config/train_lora_4d.yaml config/your_config.yaml
 
 2. Edit configuration parameters
 3. Start training:
