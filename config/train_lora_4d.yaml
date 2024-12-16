@@ -1,0 +1,66 @@
+---
+job: extension
+config:
+  name: "inference-demo"
+  process:
+    - type: 'sd_trainer'
+      training_folder: "output/"
+      device: cuda:0
+
+      network:
+        type: "lora"
+        linear: 256 # 16
+        linear_alpha: 256 # 16
+
+      save:
+        dtype: float16
+        save_every: 250
+        max_step_saves_to_keep: 4
+        push_to_hub: false
+
+      datasets:
+        - folder_path: "vidconcat/"
+          caption_ext: "txt"
+          caption_dropout_rate: 0 # you can increase it to chase generalization ablity, but I find it strange to drop captions when training lora.
+          shuffle_tokens: false
+          cache_latents_to_disk: true
+          resolution: 1024 # this needs to be changed according to your specific resolution! 
+
+      train:
+        batch_size: 4      
+        steps: 15000       
+        gradient_accumulation_steps: 1  
+        train_unet: true
+        train_text_encoder: false  
+        gradient_checkpointing: true  
+        noise_scheduler: "flowmatch"
+        optimizer: "adamw8bit"
+        lr: 1e-4         
+
+        ema_config:
+          use_ema: true
+          ema_decay: 0.99
+        dtype: bf16
+
+      model:
+        name_or_path: "./models/FLUX_DEV/"
+        is_flux: true
+        quantize: false
+
+      sample:
+        sampler: "flowmatch"
+        sample_every: 500
+        width: 1536
+        height: 1024
+        prompts: # change below prompts to what you want to inference
+          - "A 24-frame sequence arranged in a 4x6 grid on a black background. Each frame captures a 3D model from a different angle, rotating 360 degrees. The sequence begins with a front view and progresses through a complete clockwise rotation"
+          - "A 24-frame sequence arranged in a 4x6 grid on a black background. Each frame captures a 3D model of Tyrannosaurus Rex from a different angle, rotating 360 degrees. The sequence begins with a front view and progresses through a complete clockwise rotation"
+        neg: "" # no use in Flux-dev
+        seed: 42
+        walk_seed: true
+        guidance_scale: 3.5
+        sample_steps: 20
+
+meta:
+  name: "[name]"
+  version: '1.0'
