@@ -6,13 +6,20 @@ The official implementation of work "GRID: Visual Layout Generation".
 
 ## Results
 
-![demo_img_1](https://github.com/user-attachments/assets/92f33c7b-36e2-43db-b45c-a00c4fb53414)
-![demo_img_2](https://github.com/user-attachments/assets/c401d0b2-ca73-4fe9-8754-66ac768a40dd)
-![demo_img_3](https://github.com/user-attachments/assets/f1b5469b-41f3-4955-8352-52996cc68076)
-![demo_img_4](https://github.com/user-attachments/assets/8c2565e8-ceb8-4080-804e-4e1b18221e1c)
-![demo_img_5](https://github.com/user-attachments/assets/6ca23dcf-89b3-48af-9ebd-31d6d30505dd)
-![demo_img_6](https://github.com/user-attachments/assets/c93aacf6-608d-4f6f-aec8-f47c3e32a107)
-![demo_img_7](https://github.com/user-attachments/assets/5bea45ad-4354-4c11-a876-adbbd08a6d87)
+https://github.com/user-attachments/assets/360827f6-a141-4e6c-9a03-67ef0a4ae0e5
+
+https://github.com/user-attachments/assets/6f68b74c-7851-4c4e-82d4-730e1e4e50f9
+
+https://github.com/user-attachments/assets/08b97df2-aca8-49a7-b0e2-3310ffcb5251
+
+https://github.com/user-attachments/assets/46c2c2f4-5522-402c-96ea-f7fb40ec1331
+
+https://github.com/user-attachments/assets/9cc29fd9-02d2-4775-80aa-d3aee2308477
+
+https://github.com/user-attachments/assets/8e5ab2e6-35d8-4a0d-a3fc-3758756febd2
+
+https://github.com/user-attachments/assets/18a56da8-04d3-4fe4-9919-0e1a48dd0dd0
+
 
 
 ## Overview
