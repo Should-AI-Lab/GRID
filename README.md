@@ -85,17 +85,33 @@ python tools/concat.py \\
     --grid_cols 6 \\
     --frames_per_grid 24
 ```
-### Data Structure:
+Data Structure:
 ```bash
 vidgrid/
 ├── vid1.jpg  # 4x6 grid containing 24 frames
 └── vid2.jpg  # Each .jpg is a complete sequence
 ```
+
+
 ### 3. Caption Generation:
+
 ```bash
+mkdir -p models
+
+# Download GLM-4V-9B weights
+# Option 1: From ModelScope
+wget https://modelscope.cn/models/ZhipuAI/glm-4v-9b/resolve/main/pytorch_model.bin -O models/glm-4v-9b.bin
+
+# Option 2: From Hugging Face
+wget https://huggingface.co/THUDM/glm-4v-9b/resolve/main/pytorch_model.bin -O models/glm-4v-9b.bin
+
+# Option 3: From WiseModel
+wget https://wisemodel.cn/models/ZhipuAI/GLM-4V-9B/resolve/main/pytorch_model.bin -O models/glm-4v-9b.bin
+
 python tools/caption_glm.py
 ```
-### Final Training Data Structure:
+
+Final Training Data Structure:
 ```bash
 vidgrid/
 ├── vid1.jpg  # Grid image
@@ -129,17 +145,17 @@ python run.py config/your_config.yaml
 Training can be interrupted safely (except during checkpoint saving) and will resume from the last checkpoint.
 
 ## Inference
-[Coming Soon]
+
 
 ## Results
-[Showcase of various visual generation results]
+
 
 ## Applications
 - Text-to-Video Generation
 - Image-to-Video Synthesis
 - Multi-view Image Generation
 - Video Style Transfer
-- Temporal Consistency Enhancement
+- Editing
 
 ## Benchmarks
 [Performance comparison charts]
@@ -147,7 +163,7 @@ Training can be interrupted safely (except during checkpoint saving) and will re
 ## TODO
 - [x] Release the paper
 - [ ] Release the training codes
-- [ ] Update the project page
+- [ ] Update the demo and project page
 - [ ] Release the model weights
 
 ## Change Log
@@ -156,7 +172,7 @@ Training can be interrupted safely (except during checkpoint saving) and will re
 - Release the paper
 
 ## Citation
-[Coming Soon]
+
 
 ## License
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
