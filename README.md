@@ -1,9 +1,23 @@
-# GRID: Visual Layout Generation - A Novel Framework for Visual Generation Tasks
+# GRID: Visual Layout Generation - A Novel Framework for Unified Visual Generation Tasks
+The official implementation of work "GRID: Visual Layout Generation".
+
 
 [![arXiv](https://img.shields.io/badge/arXiv-[paper_id]-b31b1b.svg)](https://arxiv.org/abs/[paper_id])
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-[Banner Image: Grid-based visual generation results showcase]
+Multi-view Generation Results
+![demo_img_1](https://github.com/user-attachments/assets/92f33c7b-36e2-43db-b45c-a00c4fb53414)
+![demo_img_1](https://github.com/user-attachments/assets/c401d0b2-ca73-4fe9-8754-66ac768a40dd)
+![demo_img_1](https://github.com/user-attachments/assets/f1b5469b-41f3-4955-8352-52996cc68076)
+![demo_img_1](https://github.com/user-attachments/assets/8c2565e8-ceb8-4080-804e-4e1b18221e1c)
+![demo_img_1](https://github.com/user-attachments/assets/6ca23dcf-89b3-48af-9ebd-31d6d30505dd)
+![demo_img_1](https://github.com/user-attachments/assets/c93aacf6-608d-4f6f-aec8-f47c3e32a107)
+![demo_img_1](https://github.com/user-attachments/assets/5bea45ad-4354-4c11-a876-adbbd08a6d87)
+
+
+
+
+
 
 ## Overview
 GRID introduces a novel paradigm that reframes visual generation tasks as grid layout problems. Built upon FLUX.1 architecture, our framework transforms temporal sequences into grid layouts, enabling image generation models to process visual sequences holistically. This approach achieves remarkable efficiency and versatility across diverse visual generation tasks.
