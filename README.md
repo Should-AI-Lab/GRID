@@ -1,7 +1,6 @@
 # GRID: Visual Layout Generation - A Novel Framework for Visual Generation Tasks
 
 [![arXiv](https://img.shields.io/badge/arXiv-[paper_id]-b31b1b.svg)](https://arxiv.org/abs/[paper_id])
-[![Project Page]]()
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 [Banner Image: Grid-based visual generation results showcase]
@@ -16,6 +15,7 @@ GRID introduces a novel paradigm that reframes visual generation tasks as grid l
 - **Preserved Capabilities**: Maintains strong image generation performance while expanding functionality
 
 [Architecture Diagram: GRID framework overview]
+[📄 Read our paper](./assets/fig-intro.pdf)
 
 ## Installation
 
