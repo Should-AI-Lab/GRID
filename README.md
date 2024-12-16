@@ -160,7 +160,7 @@ Training can be interrupted safely (except during checkpoint saving) and will re
 
 ## TODO
 - [x] Release the paper
-- [ ] Release the training codes
+- [x] Release the training codes
 - [ ] Update the demo and project page
 - [ ] Release the model weights
 
