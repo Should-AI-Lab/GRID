@@ -4,6 +4,18 @@ The official implementation of work "GRID: Visual Layout Generation".
 [![arXiv](https://img.shields.io/badge/arXiv-[paper_id]-b31b1b.svg)](https://arxiv.org/abs/[paper_id])
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
+## Overview
+GRID introduces a novel paradigm that reframes visual generation tasks as grid layout problems. Built upon FLUX.1 architecture, our framework transforms temporal sequences into grid layouts, enabling image generation models to process visual sequences holistically. This approach achieves remarkable efficiency and versatility across diverse visual generation tasks.
+
+![image](https://github.com/user-attachments/assets/e9f42567-5d73-4ba2-9479-740dd1155171)
+
+### Key Features
+- **Efficient Inference**: up to 35× faster inference speeds compared to specialized models
+- **Resource Efficient**: Requires <1/1000 of computational resources  
+- **Versatile Applications**: Supports Text-to-Video, Image-to-Video, Multi-view Generation, and more
+- **Preserved Capabilities**: Maintains strong image generation performance while expanding functionality
+
+
 ## 3D/4D Results
 
 https://github.com/user-attachments/assets/360827f6-a141-4e6c-9a03-67ef0a4ae0e5
@@ -22,17 +34,11 @@ https://github.com/user-attachments/assets/18a56da8-04d3-4fe4-9919-0e1a48dd0dd0
 
 
 
-## Overview
-GRID introduces a novel paradigm that reframes visual generation tasks as grid layout problems. Built upon FLUX.1 architecture, our framework transforms temporal sequences into grid layouts, enabling image generation models to process visual sequences holistically. This approach achieves remarkable efficiency and versatility across diverse visual generation tasks.
 
-### Key Features
-- **Efficient Inference**: up to 35× faster inference speeds compared to specialized models
-- **Resource Efficient**: Requires <1/1000 of computational resources  
-- **Versatile Applications**: Supports Text-to-Video, Image-to-Video, Multi-view Generation, and more
-- **Preserved Capabilities**: Maintains strong image generation performance while expanding functionality
 
-![image](https://github.com/user-attachments/assets/e9f42567-5d73-4ba2-9479-740dd1155171)
-Figure 1: Architectural overview of GRID framework, demonstrating the transformation of temporal sequences into grid layouts for efficient visual generation.
+
+
+
 
 ## Installation
 
