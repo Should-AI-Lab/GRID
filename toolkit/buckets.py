@@ -100,13 +100,36 @@ resolutions_dit_1024: List[BucketResolution] = [
     {"width": 512, "height": 2048},
 ]
 
+resolutions_dit_2048: List[BucketResolution] = [
+    # Base resolution
+    {"width": 2048, "height": 2048},
+    # widescreen
+    {"width": 2560, "height": 1536},
+    {"width": 2560, "height": 1408},
+    {"width": 1280, "height": 768},
+    {"width": 1920, "height": 1024},
+    {"width": 3072, "height": 1536},
+    {"width": 3072, "height": 1280},
+    {"width": 1536, "height": 1024},
+    # portrait
+
+    {"width": 2048, "height": 3072},
+    {"width": 1536, "height": 2560},
+    {"width": 1024, "height": 1536},
+    {"width": 512, "height": 768},
+    {"width": 768, "height": 1152},
+]
+
+
+
 
 def get_bucket_sizes(resolution: int = 512, divisibility: int = 8) -> List[BucketResolution]:
     # determine scaler form 1024 to resolution
     scaler = resolution / 1024
 
     bucket_size_list = []
-    for bucket in resolutions_1024:
+    for bucket in resolutions_dit_2048:
+    # for bucket in resolutions_1024:
         # must be divisible by 8
         width = int(bucket["width"] * scaler)
         height = int(bucket["height"] * scaler)
@@ -141,7 +164,13 @@ def get_bucket_for_image_size(
         # if real resolution is smaller, use that instead
         real_resolution = get_resolution(width, height)
         resolution = min(resolution, real_resolution)
-        bucket_size_list = get_bucket_sizes(resolution=resolution, divisibility=divisibility)
+        ori = 1
+        if ori == 1:
+            print(f"Notice! We personalized training resolution here. You can add any resolution you want in resolutions_dit_2048 list")
+            bucket_size_list = resolutions_dit_2048
+        else:
+            bucket_size_list = get_bucket_sizes(resolution=resolution, divisibility=divisibility)
+
 
     # Check for exact match first
     for bucket in bucket_size_list:
