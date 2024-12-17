@@ -15,7 +15,9 @@ GRID introduces a novel paradigm that reframes visual generation tasks as grid l
 - **Resource Efficient**: Requires <1/1000 of computational resources  
 - **Versatile Applications**: Supports Text-to-Video, Image-to-Video, Multi-view Generation, and more
 - **Preserved Capabilities**: Maintains strong image generation performance while expanding functionality
-
+- 
+### Framework
+![image](https://github.com/user-attachments/assets/4f2cd723-8d15-4e7c-8ebc-89f479463209)
 
 ## Results
 ![GIF](https://github.com/user-attachments/assets/c5949f2b-9aeb-426e-abf6-7d95ed06e8be)
