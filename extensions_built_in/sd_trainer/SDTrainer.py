@@ -63,7 +63,7 @@ class SDTrainer(BaseSDTrainProcess):
         self.is_bfloat = self.train_config.dtype == "bfloat16" or self.train_config.dtype == "bf16"
 
         self.do_grad_scale = True
-        if self.is_fine_tuning and self.is_bfloat:
+        if self.is_fine_tuning:
             self.do_grad_scale = False
         if self.adapter_config is not None:
             if self.adapter_config.train:
@@ -75,9 +75,6 @@ class SDTrainer(BaseSDTrainProcess):
             def _unscale_grads_replacer(optimizer, inv_scale, found_inf, allow_fp16):
                 return org_unscale_grads(optimizer, inv_scale, found_inf, True)
             self.scaler._unscale_grads_ = _unscale_grads_replacer
-
-        self.cached_blank_embeds: Optional[PromptEmbeds] = None
-        self.cached_trigger_embeds: Optional[PromptEmbeds] = None
 
 
     def before_model_load(self):
@@ -116,8 +113,6 @@ class SDTrainer(BaseSDTrainProcess):
             self.taesd.requires_grad_(False)
 
     def hook_before_train_loop(self):
-        super().hook_before_train_loop()
-        
         if self.train_config.do_prior_divergence:
             self.do_prior_prediction = True
         # move vae to device if we did not cache latents
@@ -157,28 +152,6 @@ class SDTrainer(BaseSDTrainProcess):
             else:
                 # single prompt
                 self.negative_prompt_pool = [self.train_config.negative_prompt]
-
-        # handle unload text encoder
-        if self.train_config.unload_text_encoder:
-            with torch.no_grad():
-                if self.train_config.train_text_encoder:
-                    raise ValueError("Cannot unload text encoder if training text encoder")
-                # cache embeddings
-
-                print("\n***** UNLOADING TEXT ENCODER *****")
-                print("This will train only with a blank prompt or trigger word, if set")
-                print("If this is not what you want, remove the unload_text_encoder flag")
-                print("***********************************")
-                print("")
-                self.sd.text_encoder_to(self.device_torch)
-                self.cached_blank_embeds = self.sd.encode_prompt("")
-                if self.trigger_word is not None:
-                    self.cached_trigger_embeds = self.sd.encode_prompt(self.trigger_word)
-
-                # move back to cpu
-                self.sd.text_encoder_to('cpu')
-                flush()
-
 
     def process_output_for_turbo(self, pred, noisy_latents, timesteps, noise, batch):
         # to process turbo learning, we make one big step from our current timestep to the end
@@ -416,6 +389,7 @@ class SDTrainer(BaseSDTrainProcess):
             else:
                 loss = torch.nn.functional.mse_loss(pred.float(), target.float(), reduction="none")
 
+
             # handle linear timesteps and only adjust the weight of the timesteps
             if self.sd.is_flow_matching and (self.train_config.linear_timesteps or self.train_config.linear_timesteps2):
                 # calculate the weights for the timesteps
@@ -486,6 +460,79 @@ class SDTrainer(BaseSDTrainProcess):
             norm_std_loss = torch.abs(self.train_config.target_norm_std_value - pred_std).mean()
             loss = loss + norm_std_loss
 
+        # trainframe = 1 # square
+        trainframe = 2 
+        if trainframe == 1:
+            n = 8
+            b, c, h, w = pred.size()
+
+            if h % n != 0 or w % n != 0:
+                raise ValueError(f"Height ({h}) and width ({w}) must be divisible by grid size ({n}).")
+
+            grid_h, grid_w = h // n, w // n
+
+            pred_diff = pred
+            target_diff = target
+
+            for i in range(n):
+                for j in range(n):
+                    if j == 0: 
+                        if i > 0:
+                            pred_diff[:, :, i * grid_h:(i + 1) * grid_h,
+                            j * grid_w:(j + 1) * grid_w] = (
+                                    pred[:, :, i * grid_h:(i + 1) * grid_h,
+                                    j * grid_w:(j + 1) * grid_w] -
+                                    pred[:, :, (i - 1) * grid_h:i * grid_h,
+                                    (n - 1) * grid_w:n * grid_w]
+                            )
+                            target_diff[:, :, i * grid_h:(i + 1) * grid_h,
+                            j * grid_w:(j + 1) * grid_w] = (
+                                    target[:, :, i * grid_h:(i + 1) * grid_h,
+                                    j * grid_w:(j + 1) * grid_w] -
+                                    target[:, :, (i - 1) * grid_h:i * grid_h,
+                                    (n - 1) * grid_w:n * grid_w]
+                            )
+                    else:
+                        pred_diff[:, :, i * grid_h:(i + 1) * grid_h,
+                        j * grid_w:(j + 1) * grid_w] -= (
+                                pred[:, :, i * grid_h:(i + 1) * grid_h,
+                                j * grid_w:(j + 1) * grid_w] -
+                                pred[:, :, i * grid_h:(i + 1) * grid_h,
+                                (j - 1) * grid_w:j * grid_w]
+                        )
+                        target_diff[:, :, i * grid_h:(i + 1) * grid_h,
+                        j * grid_w:(j + 1) * grid_w] -= (
+                                target[:, :, i * grid_h:(i + 1) * grid_h,
+                                j * grid_w:(j + 1) * grid_w] -
+                                target[:, :, i * grid_h:(i + 1) * grid_h,
+                                (j - 1) * grid_w:j * grid_w]
+                        )
+
+            flow_loss = torch.nn.functional.mse_loss(pred_diff, target_diff, reduction='none') * 0.1
+
+            print(f"noise_pred shape:{pred.shape}, mse loss {loss}, flow loss: {flow_loss.mean()}")
+            loss = loss + flow_loss.mean()
+
+        elif trainframe == 2:
+            b, c, h, w = pred.size()
+            m, n = 4, 6
+
+            pred_grid = pred.view(b, c, m, h // m, n, w // n)
+            target_grid = target.view(b, c, m, h // m, n, w // n)
+
+            pred_grid = pred_grid.permute(0, 2, 4, 1, 3, 5)
+            target_grid = target_grid.permute(0, 2, 4, 1, 3, 5)
+
+            pred_flow = torch.zeros(b, m, n - 1, c, h // m, w // n, device=pred.device)
+            target_flow = torch.zeros(b, m, n - 1, c, h // m, w // n, device=target.device)
+
+            for i in range(m): 
+                pred_flow[:, i] = pred_grid[:, i, 1:] - pred_grid[:, i, :-1]
+                target_flow[:, i] = target_grid[:, i, 1:] - target_grid[:, i, :-1]
+
+            flow_loss = torch.nn.functional.mse_loss(pred_flow, target_flow, reduction='none')
+            print(f"noise_pred shape:{pred.shape}, mse loss {loss}, flow loss: {flow_loss.mean()}")
+            loss = 0.1 * flow_loss.mean() + loss
 
         return loss
 
@@ -824,8 +871,6 @@ class SDTrainer(BaseSDTrainProcess):
             was_adapter_active = self.adapter.is_active
             self.adapter.is_active = False
 
-        if self.train_config.unload_text_encoder:
-            raise ValueError("Prior predictions currently do not support unloading text encoder")
         # do a prediction here so we can match its output with network multiplier set to 0.0
         with torch.no_grad():
             dtype = get_torch_dtype(self.train_config.dtype)
@@ -934,10 +979,8 @@ class SDTrainer(BaseSDTrainProcess):
             unconditional_embeddings=unconditional_embeds,
             timestep=timesteps,
             guidance_scale=self.train_config.cfg_scale,
-            guidance_embedding_scale=self.train_config.cfg_scale,
             detach_unconditional=False,
             rescale_cfg=self.train_config.cfg_rescale,
-            bypass_guidance_embedding=self.train_config.bypass_guidance_embedding,
             **kwargs
         )
 
@@ -1199,7 +1242,7 @@ class SDTrainer(BaseSDTrainProcess):
                         self.adapter(conditional_clip_embeds)
 
                 # do the custom adapter after the prior prediction
-                if self.adapter and isinstance(self.adapter, CustomAdapter) and (has_clip_image or is_reg):
+                if self.adapter and isinstance(self.adapter, CustomAdapter) and has_clip_image:
                     quad_count = random.randint(1, 4)
                     self.adapter.train()
                     self.adapter.trigger_pre_te(
@@ -1212,30 +1255,7 @@ class SDTrainer(BaseSDTrainProcess):
 
                 with self.timer('encode_prompt'):
                     unconditional_embeds = None
-                    if self.train_config.unload_text_encoder:
-                        with torch.set_grad_enabled(False):
-                            embeds_to_use = self.cached_blank_embeds.clone().detach().to(
-                                self.device_torch, dtype=dtype
-                            )
-                            if self.cached_trigger_embeds is not None and not is_reg:
-                                embeds_to_use = self.cached_trigger_embeds.clone().detach().to(
-                                    self.device_torch, dtype=dtype
-                                )
-                            conditional_embeds = concat_prompt_embeds(
-                                [embeds_to_use] * noisy_latents.shape[0]
-                            )
-                            if self.train_config.do_cfg:
-                                unconditional_embeds = self.cached_blank_embeds.clone().detach().to(
-                                    self.device_torch, dtype=dtype
-                                )
-                                unconditional_embeds = concat_prompt_embeds(
-                                    [unconditional_embeds] * noisy_latents.shape[0]
-                                )
-
-                            if isinstance(self.adapter, CustomAdapter):
-                                self.adapter.is_unconditional_run = False
-
-                    elif grad_on_text_encoder:
+                    if grad_on_text_encoder:
                         with torch.set_grad_enabled(True):
                             if isinstance(self.adapter, CustomAdapter):
                                 self.adapter.is_unconditional_run = False
@@ -1291,16 +1311,6 @@ class SDTrainer(BaseSDTrainProcess):
                         conditional_embeds = conditional_embeds.detach()
                         if self.train_config.do_cfg:
                             unconditional_embeds = unconditional_embeds.detach()
-                    
-                    if self.decorator:
-                        conditional_embeds.text_embeds = self.decorator(
-                            conditional_embeds.text_embeds
-                        )
-                        if self.train_config.do_cfg:
-                            unconditional_embeds.text_embeds = self.decorator(
-                                unconditional_embeds.text_embeds, 
-                                is_unconditional=True
-                            )
 
                 # flush()
                 pred_kwargs = {}
@@ -1566,6 +1576,7 @@ class SDTrainer(BaseSDTrainProcess):
                     with self.timer('predict_unet'):
                         if unconditional_embeds is not None:
                             unconditional_embeds = unconditional_embeds.to(self.device_torch, dtype=dtype).detach()
+                            # here --------------------------------------------------------------------------------------------------
                         noise_pred = self.predict_noise(
                             noisy_latents=noisy_latents.to(self.device_torch, dtype=dtype),
                             timesteps=timesteps,
@@ -1573,6 +1584,7 @@ class SDTrainer(BaseSDTrainProcess):
                             unconditional_embeds=unconditional_embeds,
                             **pred_kwargs
                         )
+
                     self.after_unet_predict()
 
                     with self.timer('calculate_loss'):
