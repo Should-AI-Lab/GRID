@@ -1,6 +1,6 @@
 
-# GRID: Visual Layout Generation - A Novel Framework for Unified Visual Generation Tasks
-The official implementation of work "GRID: Visual Layout Generation".
+# GridShow: Omni Visual Generation 
+The official implementation of work "GridShow: Omni Visual Generation".
 
 [![arXiv](https://img.shields.io/badge/arXiv-[paper_id]-b31b1b.svg)](https://arxiv.org/abs/[paper_id])
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
