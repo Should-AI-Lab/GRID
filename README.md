@@ -134,9 +134,6 @@ Training can be interrupted safely (except during checkpoint saving) and will re
 ## Inference
 
 
-## Results
-
-
 ## Applications
 - Text-to-Video Generation
 - Image-to-Video Synthesis
@@ -145,8 +142,25 @@ Training can be interrupted safely (except during checkpoint saving) and will re
 - Editing
 
 ## Benchmarks
-[Performance comparison charts]
+
 ![image](https://github.com/user-attachments/assets/9dbac970-19c9-4193-b240-7ed50b6f483f)
+
+Table 2: Multi-view Generation Results
+
+Quantitative comparison of Multi-view Generation Results on Text-to-Multyview, Image-to-Multyview and Multyview interpolation Tasks. Time indicates the whole time cost during inference.
+
+| Task | Method | CLIP-F↑ | CLIP-O↑ | FVD↓ | Time↓ |
+|---|---|---|---|---|---|
+| Text2MV | 4DFY | 0.8092 | 0.6163 | 390.4 | 3h |
+| | Ours-EF | 0.9060 | 0.6189 | 355.6 | 6m |
+| | **Ours** | **0.9427** | **0.6247** | **324.3** | **6m** |
+| Image2MV | STAG4D | 0.88 | 0.64 | 475.4 | 3h30m |
+| | Ours-EF | 0.9392 | **0.6580** | **333.7** | 6m |
+| | **Ours** | **0.9486** | 0.6554 | 350.6 | **6m** |
+| Interpolation | Ours-EF | 0.9356 | 0.7223 | 348.2 | 6m |
+| | **Ours** | **0.9543** | **0.7415** | **295.1** | **6m** |
+
+
 ## TODO
 - [x] Release the paper
 - [x] Release the training codes and demo
