@@ -24,14 +24,12 @@ from torchvision.transforms import Resize, transforms
 from toolkit.assistant_lora import load_assistant_lora_from_path
 from toolkit.clip_vision_adapter import ClipVisionAdapter
 from toolkit.custom_adapter import CustomAdapter
-from toolkit.dequantize import patch_dequantization_on_save
 from toolkit.ip_adapter import IPAdapter
 from library.model_util import convert_unet_state_dict_to_sd, convert_text_encoder_state_dict_to_sd_v2, \
     convert_vae_state_dict, load_vae
 from toolkit import train_tools
 from toolkit.config_modules import ModelConfig, GenerateImageConfig
 from toolkit.metadata import get_meta_for_safetensors
-from toolkit.models.decorator import Decorator
 from toolkit.paths import REPOS_ROOT, KEYMAPS_ROOT
 from toolkit.prompt_utils import inject_trigger_into_prompt, PromptEmbeds, concat_prompt_embeds
 from toolkit.reference_adapter import ReferenceAdapter
@@ -44,13 +42,14 @@ from einops import rearrange, repeat
 import torch
 from toolkit.pipelines import CustomStableDiffusionXLPipeline, CustomStableDiffusionPipeline, \
     StableDiffusionKDiffusionXLPipeline, StableDiffusionXLRefinerPipeline, FluxWithCFGPipeline
+import diffusers
 from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline, T2IAdapter, DDPMScheduler, \
     StableDiffusionXLAdapterPipeline, StableDiffusionAdapterPipeline, DiffusionPipeline, PixArtTransformer2DModel, \
     StableDiffusionXLImg2ImgPipeline, LCMScheduler, Transformer2DModel, AutoencoderTiny, ControlNetModel, \
     StableDiffusionXLControlNetPipeline, StableDiffusionControlNetPipeline, StableDiffusion3Pipeline, \
     StableDiffusion3Img2ImgPipeline, PixArtSigmaPipeline, AuraFlowPipeline, AuraFlowTransformer2DModel, FluxPipeline, \
-    FluxTransformer2DModel, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel
-import diffusers
+    FluxTransformer2DModel, FlowMatchEulerDiscreteScheduler, FluxInpaintPipeline
+
 from diffusers import \
     AutoencoderKL, \
     UNet2DConditionModel
@@ -60,7 +59,6 @@ from transformers import CLIPTextModel, CLIPTokenizer, CLIPTextModelWithProjecti
 
 from toolkit.paths import ORIG_CONFIGS_ROOT, DIFFUSERS_CONFIGS_ROOT
 from huggingface_hub import hf_hub_download
-from toolkit.models.flux import bypass_flux_guidance, restore_flux_guidance
 
 from optimum.quanto import freeze, qfloat8, quantize, QTensor, qint4
 from typing import TYPE_CHECKING
@@ -167,7 +165,6 @@ class StableDiffusion:
         # to hold network if there is one
         self.network = None
         self.adapter: Union['ControlNetModel', 'T2IAdapter', 'IPAdapter', 'ReferenceAdapter', None] = None
-        self.decorator: Union[Decorator, None] = None
         self.is_xl = model_config.is_xl
         self.is_v2 = model_config.is_v2
         self.is_ssd = model_config.is_ssd
@@ -193,6 +190,8 @@ class StableDiffusion:
         self.invert_assistant_lora = False
 
     def load_model(self):
+        use_inpaint = 1
+
         if self.is_loaded:
             return
         dtype = get_torch_dtype(self.dtype)
@@ -253,285 +252,9 @@ class StableDiffusion:
 
             pipe.vae = pipe.vae.to(self.vae_device_torch, dtype=self.vae_torch_dtype)
 
-            if self.model_config.experimental_xl:
-                print("Experimental XL mode enabled")
-                print("Loading and injecting alt weights")
-                # load the mismatched weight and force it in
-                raw_state_dict = load_file(model_path)
-                replacement_weight = raw_state_dict['conditioner.embedders.1.model.text_projection'].clone()
-                del raw_state_dict
-                #  get state dict for  for 2nd text encoder
-                te1_state_dict = text_encoders[1].state_dict()
-                # replace weight with mismatched weight
-                te1_state_dict['text_projection.weight'] = replacement_weight.to(self.device_torch, dtype=dtype)
-                flush()
-                print("Injecting alt weights")
-        elif self.model_config.is_v3:
-            if self.custom_pipeline is not None:
-                pipln = self.custom_pipeline
-            else:
-                pipln = StableDiffusion3Pipeline
-            
-            print("Loading SD3 model")
-            # assume it is the large model
-            base_model_path = "stabilityai/stable-diffusion-3.5-large"
-            print("Loading transformer")
-            subfolder = 'transformer'
-            transformer_path = model_path
-            # check if HF_DATASETS_OFFLINE or TRANSFORMERS_OFFLINE is set
-            if os.path.exists(transformer_path):
-                subfolder = None
-                transformer_path = os.path.join(transformer_path, 'transformer')
-                # check if the path is a full checkpoint.
-                te_folder_path = os.path.join(model_path, 'text_encoder')
-                # if we have the te, this folder is a full checkpoint, use it as the base
-                if os.path.exists(te_folder_path):
-                    base_model_path = model_path
-            else:
-                # is remote use whatever path we were given
-                base_model_path = model_path
-            
-            transformer = SD3Transformer2DModel.from_pretrained(
-                transformer_path,
-                subfolder=subfolder,
-                torch_dtype=dtype,
-            )
-            if not self.low_vram:
-                # for low v ram, we leave it on the cpu. Quantizes slower, but allows training on primary gpu
-                transformer.to(torch.device(self.quantize_device), dtype=dtype)
-            flush()
-            
-            if self.model_config.lora_path is not None:
-                raise ValueError("LoRA is not supported for SD3 models currently")
-            
-            if self.model_config.quantize:
-                quantization_type = qfloat8
-                print("Quantizing transformer")
-                quantize(transformer, weights=quantization_type)
-                freeze(transformer)
-                transformer.to(self.device_torch)
-            else:
-                transformer.to(self.device_torch, dtype=dtype)
-                
-            scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(base_model_path, subfolder="scheduler")
-            print("Loading vae")
-            vae = AutoencoderKL.from_pretrained(base_model_path, subfolder="vae", torch_dtype=dtype)
-            flush()
-            
-            print("Loading t5")
-            tokenizer_3 = T5TokenizerFast.from_pretrained(base_model_path, subfolder="tokenizer_3", torch_dtype=dtype)
-            text_encoder_3 = T5EncoderModel.from_pretrained(
-                base_model_path, 
-                subfolder="text_encoder_3", 
-                torch_dtype=dtype
-            )
-            
-            text_encoder_3.to(self.device_torch, dtype=dtype)
-            flush()
-
-            if self.model_config.quantize:
-                print("Quantizing T5")
-                quantize(text_encoder_3, weights=qfloat8)
-                freeze(text_encoder_3)
-                flush()
-                
-
-            # see if path exists
-            if not os.path.exists(model_path) or os.path.isdir(model_path):
-                try:
-                    # try to load with default diffusers
-                    pipe = pipln.from_pretrained(
-                        base_model_path,
-                        dtype=dtype,
-                        device=self.device_torch,
-                        tokenizer_3=tokenizer_3,
-                        text_encoder_3=text_encoder_3,
-                        transformer=transformer,
-                        # variant="fp16",
-                        use_safetensors=True,
-                        repo_type="model",
-                        ignore_patterns=["*.md", "*..gitattributes"],
-                        **load_args
-                    )
-                except Exception as e:
-                    print(f"Error loading from pretrained: {e}")
-                    raise e
-
-            else:
-                pipe = pipln.from_single_file(
-                    model_path,
-                    transformer=transformer,
-                    device=self.device_torch,
-                    torch_dtype=self.torch_dtype,
-                    tokenizer_3=tokenizer_3,
-                    text_encoder_3=text_encoder_3,
-                    **load_args
-                )
-
-            flush()
-
-            text_encoders = [pipe.text_encoder, pipe.text_encoder_2, pipe.text_encoder_3]
-            tokenizer = [pipe.tokenizer, pipe.tokenizer_2, pipe.tokenizer_3]
-            # replace the to function with a no-op since it throws an error instead of a warning
-            # text_encoders[2].to = lambda *args, **kwargs: None
-            for text_encoder in text_encoders:
-                text_encoder.to(self.device_torch, dtype=dtype)
-                text_encoder.requires_grad_(False)
-                text_encoder.eval()
-            text_encoder = text_encoders
-
-
-        elif self.model_config.is_pixart:
-            te_kwargs = {}
-            # handle quantization of TE
-            te_is_quantized = False
-            if self.model_config.text_encoder_bits == 8:
-                te_kwargs['load_in_8bit'] = True
-                te_kwargs['device_map'] = "auto"
-                te_is_quantized = True
-            elif self.model_config.text_encoder_bits == 4:
-                te_kwargs['load_in_4bit'] = True
-                te_kwargs['device_map'] = "auto"
-                te_is_quantized = True
-
-            main_model_path = "PixArt-alpha/PixArt-XL-2-1024-MS"
-            if self.model_config.is_pixart_sigma:
-                main_model_path = "PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers"
-
-            main_model_path = model_path
-
-            # load the TE in 8bit mode
-            text_encoder = T5EncoderModel.from_pretrained(
-                main_model_path,
-                subfolder="text_encoder",
-                torch_dtype=self.torch_dtype,
-                **te_kwargs
-            )
-
-            # load the transformer
-            subfolder = "transformer"
-            # check if it is just the unet
-            if os.path.exists(model_path) and not os.path.exists(os.path.join(model_path, subfolder)):
-                subfolder = None
-
-            if te_is_quantized:
-                # replace the to function with a no-op since it throws an error instead of a warning
-                text_encoder.to = lambda *args, **kwargs: None
-
-            text_encoder.to(self.te_device_torch, dtype=self.te_torch_dtype)
-
-            if self.model_config.is_pixart_sigma:
-                # load the transformer only from the save
-                transformer = Transformer2DModel.from_pretrained(
-                    model_path if self.model_config.unet_path is None else self.model_config.unet_path,
-                    torch_dtype=self.torch_dtype,
-                    subfolder='transformer'
-                )
-                pipe: PixArtSigmaPipeline = PixArtSigmaPipeline.from_pretrained(
-                    main_model_path,
-                    transformer=transformer,
-                    text_encoder=text_encoder,
-                    dtype=dtype,
-                    device=self.device_torch,
-                    **load_args
-                )
-
-            else:
-
-                # load the transformer only from the save
-                transformer = Transformer2DModel.from_pretrained(model_path, torch_dtype=self.torch_dtype,
-                                                                 subfolder=subfolder)
-                pipe: PixArtAlphaPipeline = PixArtAlphaPipeline.from_pretrained(
-                    main_model_path,
-                    transformer=transformer,
-                    text_encoder=text_encoder,
-                    dtype=dtype,
-                    device=self.device_torch,
-                    **load_args
-                ).to(self.device_torch)
-
-            if self.model_config.unet_sample_size is not None:
-                pipe.transformer.config.sample_size = self.model_config.unet_sample_size
-            pipe.transformer = pipe.transformer.to(self.device_torch, dtype=dtype)
-
-            flush()
-            # text_encoder = pipe.text_encoder
-            # text_encoder.to(self.device_torch, dtype=dtype)
-            text_encoder.requires_grad_(False)
-            text_encoder.eval()
-            pipe.transformer = pipe.transformer.to(self.device_torch, dtype=dtype)
-            tokenizer = pipe.tokenizer
-
-            pipe.vae = pipe.vae.to(self.vae_device_torch, dtype=self.vae_torch_dtype)
-            if self.noise_scheduler is None:
-                self.noise_scheduler = pipe.scheduler
-
-
-        elif self.model_config.is_auraflow:
-            te_kwargs = {}
-            # handle quantization of TE
-            te_is_quantized = False
-            if self.model_config.text_encoder_bits == 8:
-                te_kwargs['load_in_8bit'] = True
-                te_kwargs['device_map'] = "auto"
-                te_is_quantized = True
-            elif self.model_config.text_encoder_bits == 4:
-                te_kwargs['load_in_4bit'] = True
-                te_kwargs['device_map'] = "auto"
-                te_is_quantized = True
-
-            main_model_path = model_path
-
-            # load the TE in 8bit mode
-            text_encoder = UMT5EncoderModel.from_pretrained(
-                main_model_path,
-                subfolder="text_encoder",
-                torch_dtype=self.torch_dtype,
-                **te_kwargs
-            )
-
-            # load the transformer
-            subfolder = "transformer"
-            # check if it is just the unet
-            if os.path.exists(model_path) and not os.path.exists(os.path.join(model_path, subfolder)):
-                subfolder = None
-
-            if te_is_quantized:
-                # replace the to function with a no-op since it throws an error instead of a warning
-                text_encoder.to = lambda *args, **kwargs: None
-
-            # load the transformer only from the save
-            transformer = AuraFlowTransformer2DModel.from_pretrained(
-                model_path if self.model_config.unet_path is None else self.model_config.unet_path,
-                torch_dtype=self.torch_dtype,
-                subfolder='transformer'
-            )
-            pipe: AuraFlowPipeline = AuraFlowPipeline.from_pretrained(
-                main_model_path,
-                transformer=transformer,
-                text_encoder=text_encoder,
-                dtype=dtype,
-                device=self.device_torch,
-                **load_args
-            )
-
-            pipe.transformer = pipe.transformer.to(self.device_torch, dtype=dtype)
-
-            # patch auraflow so it can handle other aspect ratios
-            # patch_auraflow_pos_embed(pipe.transformer.pos_embed)
-
-            flush()
-            # text_encoder = pipe.text_encoder
-            # text_encoder.to(self.device_torch, dtype=dtype)
-            text_encoder.requires_grad_(False)
-            text_encoder.eval()
-            pipe.transformer = pipe.transformer.to(self.device_torch, dtype=dtype)
-            tokenizer = pipe.tokenizer
-
         elif self.model_config.is_flux:
             print("Loading Flux model")
-            # base_model_path = "black-forest-labs/FLUX.1-schnell"
-            base_model_path = self.model_config.name_or_path_original
+            base_model_path = "black-forest-labs/FLUX.1-schnell"
             print("Loading transformer")
             subfolder = 'transformer'
             transformer_path = model_path
@@ -558,59 +281,56 @@ class StableDiffusion:
                 transformer.to(torch.device(self.quantize_device), dtype=dtype)
             flush()
 
-            if self.model_config.assistant_lora_path is not None or self.model_config.inference_lora_path is not None:
-                if self.model_config.inference_lora_path is not None and self.model_config.assistant_lora_path is not None:
-                    raise ValueError("Cannot load both assistant lora and inference lora at the same time")
-                
+            if self.model_config.assistant_lora_path is not None:
                 if self.model_config.lora_path:
                     raise ValueError("Cannot load both assistant lora and lora at the same time")
 
                 if not self.is_flux:
-                    raise ValueError("Assistant/ inference lora is only supported for flux models currently")
-                
-                load_lora_path = self.model_config.inference_lora_path
-                if load_lora_path is None:
-                    load_lora_path = self.model_config.assistant_lora_path
+                    raise ValueError("Assistant lora is only supported for flux models currently")
 
-                if os.path.isdir(load_lora_path):
-                    load_lora_path = os.path.join(
-                        load_lora_path, "pytorch_lora_weights.safetensors"
-                    )
-                elif not os.path.exists(load_lora_path):
-                    print(f"Grabbing lora from the hub: {load_lora_path}")
+                # handle downloading from the hub if needed
+                if not os.path.exists(self.model_config.assistant_lora_path):
+                    print(f"Grabbing assistant lora from the hub: {self.model_config.assistant_lora_path}")
                     new_lora_path = hf_hub_download(
-                        load_lora_path,
+                        self.model_config.assistant_lora_path,
                         filename="pytorch_lora_weights.safetensors"
                     )
                     # replace the path
-                    load_lora_path = new_lora_path
-                    
-                    if self.model_config.inference_lora_path is not None:
-                        self.model_config.inference_lora_path = new_lora_path
-                    if self.model_config.assistant_lora_path is not None:
-                        self.model_config.assistant_lora_path = new_lora_path
+                    self.model_config.assistant_lora_path = new_lora_path
 
-                if self.model_config.assistant_lora_path is not None:
-                    # for flux, we assume it is flux schnell. We cannot merge in the assistant lora and unmerge it on
-                    # quantized weights so it had to process unmerged (slow). Since schnell samples in just 4 steps
-                    # it is better to merge it in now, and sample slowly later, otherwise training is slowed in half
-                    # so we will merge in now and sample with -1 weight later
-                    self.invert_assistant_lora = True
-                    # trigger it to get merged in
-                    self.model_config.lora_path = self.model_config.assistant_lora_path
+                # for flux, we assume it is flux schnell. We cannot merge in the assistant lora and unmerge it on
+                # quantized weights so it had to process unmerged (slow). Since schnell samples in just 4 steps
+                # it is better to merge it in now, and sample slowly later, otherwise training is slowed in half
+                # so we will merge in now and sample with -1 weight later
+                self.invert_assistant_lora = True
+                # trigger it to get merged in
+                self.model_config.lora_path = self.model_config.assistant_lora_path
 
             if self.model_config.lora_path is not None:
                 print("Fusing in LoRA")
                 # need the pipe for peft
-                pipe: FluxPipeline = FluxPipeline(
-                    scheduler=None,
-                    text_encoder=None,
-                    tokenizer=None,
-                    text_encoder_2=None,
-                    tokenizer_2=None,
-                    vae=None,
-                    transformer=transformer,
-                )
+                if use_inpaint == None:
+                    pipe: FluxPipeline = FluxPipeline(
+                        scheduler=None,
+                        text_encoder=None,
+                        tokenizer=None,
+                        text_encoder_2=None,
+                        tokenizer_2=None,
+                        vae=None,
+                        transformer=transformer,
+                    )
+                else:
+                    pipe: FluxInpaintPipeline = FluxInpaintPipeline(
+                        scheduler=None,
+                        text_encoder=None,
+                        tokenizer=None,
+                        text_encoder_2=None,
+                        tokenizer_2=None,
+                        vae=None,
+                        transformer=transformer,
+                    )
+
+
                 if self.low_vram:
                     # we cannot fuse the loras all at once without ooming in lowvram mode, so we have to do it in parts
                     # we can do it on the cpu but it takes about 5-10 mins vs seconds on the gpu
@@ -665,13 +385,11 @@ class StableDiffusion:
                     # unfortunately, not an easier way with peft
                     pipe.unload_lora_weights()
             flush()
-            
+
             if self.model_config.quantize:
-                # patch the state dict method
-                patch_dequantization_on_save(transformer)
                 quantization_type = qfloat8
                 print("Quantizing transformer")
-                quantize(transformer, weights=quantization_type, **self.model_config.quantize_kwargs)
+                quantize(transformer, weights=quantization_type)
                 freeze(transformer)
                 transformer.to(self.device_torch)
             else:
@@ -692,27 +410,38 @@ class StableDiffusion:
             text_encoder_2.to(self.device_torch, dtype=dtype)
             flush()
 
-            if self.model_config.quantize:
-                print("Quantizing T5")
-                quantize(text_encoder_2, weights=qfloat8)
-                freeze(text_encoder_2)
-                flush()
-                
+            print("Quantizing T5")
+            quantize(text_encoder_2, weights=qfloat8)
+            freeze(text_encoder_2)
+            flush()
+
             print("Loading clip")
             text_encoder = CLIPTextModel.from_pretrained(base_model_path, subfolder="text_encoder", torch_dtype=dtype)
             tokenizer = CLIPTokenizer.from_pretrained(base_model_path, subfolder="tokenizer", torch_dtype=dtype)
             text_encoder.to(self.device_torch, dtype=dtype)
 
             print("making pipe")
-            pipe: FluxPipeline = FluxPipeline(
-                scheduler=scheduler,
-                text_encoder=text_encoder,
-                tokenizer=tokenizer,
-                text_encoder_2=None,
-                tokenizer_2=tokenizer_2,
-                vae=vae,
-                transformer=None,
-            )
+            if use_inpaint == None:
+                pipe: FluxPipeline = FluxPipeline(
+                    scheduler=scheduler,
+                    text_encoder=text_encoder,
+                    tokenizer=tokenizer,
+                    text_encoder_2=None,
+                    tokenizer_2=tokenizer_2,
+                    vae=vae,
+                    transformer=None,
+                )
+            else:
+                pipe: FluxInpaintPipeline = FluxInpaintPipeline(
+                    scheduler=scheduler,
+                    text_encoder=text_encoder,
+                    tokenizer=tokenizer,
+                    text_encoder_2=None,
+                    tokenizer_2=tokenizer_2,
+                    vae=vae,
+                    transformer=None,
+                )
+
             pipe.text_encoder_2 = text_encoder_2
             pipe.transformer = transformer
 
@@ -840,13 +569,6 @@ class StableDiffusion:
                 # invert and disable during training
                 self.assistant_lora.multiplier = -1.0
                 self.assistant_lora.is_active = False
-                
-        if self.model_config.inference_lora_path is not None:
-            print("Loading inference lora")
-            self.assistant_lora: 'LoRASpecialNetwork' = load_assistant_lora_from_path(
-                self.model_config.inference_lora_path, self)
-            # disable during training
-            self.assistant_lora.is_active = False
 
         if self.is_pixart and self.vae_scale_factor == 16:
             # TODO make our own pipeline?
@@ -924,12 +646,6 @@ class StableDiffusion:
                 self.assistant_lora.force_to(self.device_torch, self.torch_dtype)
             else:
                 self.assistant_lora.is_active = False
-                
-        if self.model_config.inference_lora_path is not None:
-            print("Loading inference lora")
-            self.assistant_lora.is_active = True
-            # move weights on to the device
-            self.assistant_lora.force_to(self.device_torch, self.torch_dtype)
 
         if self.network is not None:
             self.network.eval()
@@ -990,6 +706,7 @@ class StableDiffusion:
                     if self.is_xl:
                         Pipe = StableDiffusionXLAdapterPipeline
                     else:
+                        print(f"adapter loading")
                         Pipe = StableDiffusionAdapterPipeline
                     extra_args['adapter'] = self.adapter
                 elif isinstance(self.adapter, ControlNetModel):
@@ -1032,16 +749,30 @@ class StableDiffusion:
                     )
 
                 else:
-                    pipeline = FluxPipeline(
-                        vae=self.vae,
-                        transformer=self.unet,
-                        text_encoder=self.text_encoder[0],
-                        text_encoder_2=self.text_encoder[1],
-                        tokenizer=self.tokenizer[0],
-                        tokenizer_2=self.tokenizer[1],
-                        scheduler=noise_scheduler,
-                        **extra_args
-                    )
+                    usei2v = 0
+                    print(f"usei2v = {usei2v} controls which pipeline(Fluxpipeline,FluxInpaintingpipline) is used, come to edit it!")
+                    if usei2v == 0:
+                        pipeline = FluxPipeline(
+                            vae=self.vae,
+                            transformer=self.unet,
+                            text_encoder=self.text_encoder[0],
+                            text_encoder_2=self.text_encoder[1],
+                            tokenizer=self.tokenizer[0],
+                            tokenizer_2=self.tokenizer[1],
+                            scheduler=noise_scheduler,
+                            **extra_args
+                        )
+                    else:
+                        pipeline = FluxInpaintPipeline(
+                            vae=self.vae,
+                            transformer=self.unet,
+                            text_encoder=self.text_encoder[0],
+                            text_encoder_2=self.text_encoder[1],
+                            tokenizer=self.tokenizer[0],
+                            tokenizer_2=self.tokenizer[1],
+                            scheduler=noise_scheduler,
+                            **extra_args
+                        )
                 pipeline.watermark = None
             elif self.is_v3:
                 pipeline = Pipe(
@@ -1120,12 +851,17 @@ class StableDiffusion:
 
         # pipeline.to(self.device_torch)
 
-        with network:
+        with ((((((((network)))))))):
             with torch.no_grad():
                 if self.network is not None:
                     assert self.network.is_active
 
                 for i in tqdm(range(len(image_configs)), desc=f"Generating Images", leave=False):
+                    # if i < 75:
+                    #     print(f"i = {i} skip")
+                    #     continue
+
+
                     gen_config = image_configs[i]
 
                     extra = {}
@@ -1164,8 +900,6 @@ class StableDiffusion:
                         self.network.multiplier = gen_config.network_multiplier
                     torch.manual_seed(gen_config.seed)
                     torch.cuda.manual_seed(gen_config.seed)
-                    
-                    generator = torch.manual_seed(gen_config.seed)
 
                     if self.adapter is not None and isinstance(self.adapter, ClipVisionAdapter) \
                             and gen_config.adapter_image_path is not None:
@@ -1212,11 +946,6 @@ class StableDiffusion:
                         conditional_embeds,
                         unconditional_embeds,
                     )
-                    
-                    if self.decorator is not None:
-                        # apply the decorator to the embeddings
-                        conditional_embeds.text_embeds = self.decorator(conditional_embeds.text_embeds)
-                        unconditional_embeds.text_embeds = self.decorator(unconditional_embeds.text_embeds, is_unconditional=True)
 
                     if self.adapter is not None and isinstance(self.adapter, IPAdapter) \
                             and gen_config.adapter_image_path is not None:
@@ -1264,55 +993,7 @@ class StableDiffusion:
                     conditional_embeds = conditional_embeds.to(self.device_torch, dtype=self.unet.dtype)
                     unconditional_embeds = unconditional_embeds.to(self.device_torch, dtype=self.unet.dtype)
 
-                    if self.is_xl:
-                        # fix guidance rescale for sdxl
-                        # was trained on 0.7 (I believe)
-
-                        grs = gen_config.guidance_rescale
-                        # if grs is None or grs < 0.00001:
-                        #     grs = 0.7
-                        # grs = 0.0
-
-                        if sampler.startswith("sample_"):
-                            extra['use_karras_sigmas'] = True
-                            extra = {
-                                **extra,
-                                **gen_config.extra_kwargs,
-                            }
-
-                        img = pipeline(
-                            # prompt=gen_config.prompt,
-                            # prompt_2=gen_config.prompt_2,
-                            prompt_embeds=conditional_embeds.text_embeds,
-                            pooled_prompt_embeds=conditional_embeds.pooled_embeds,
-                            negative_prompt_embeds=unconditional_embeds.text_embeds,
-                            negative_pooled_prompt_embeds=unconditional_embeds.pooled_embeds,
-                            # negative_prompt=gen_config.negative_prompt,
-                            # negative_prompt_2=gen_config.negative_prompt_2,
-                            height=gen_config.height,
-                            width=gen_config.width,
-                            num_inference_steps=gen_config.num_inference_steps,
-                            guidance_scale=gen_config.guidance_scale,
-                            guidance_rescale=grs,
-                            latents=gen_config.latents,
-                            generator=generator,
-                            **extra
-                        ).images[0]
-                    elif self.is_v3:
-                        img = pipeline(
-                            prompt_embeds=conditional_embeds.text_embeds,
-                            pooled_prompt_embeds=conditional_embeds.pooled_embeds,
-                            negative_prompt_embeds=unconditional_embeds.text_embeds,
-                            negative_pooled_prompt_embeds=unconditional_embeds.pooled_embeds,
-                            height=gen_config.height,
-                            width=gen_config.width,
-                            num_inference_steps=gen_config.num_inference_steps,
-                            guidance_scale=gen_config.guidance_scale,
-                            latents=gen_config.latents,
-                            generator=generator,
-                            **extra
-                        ).images[0]
-                    elif self.is_flux:
+                    if self.is_flux:
                         if self.model_config.use_flux_cfg:
                             img = pipeline(
                                 prompt_embeds=conditional_embeds.text_embeds,
@@ -1324,23 +1005,168 @@ class StableDiffusion:
                                 num_inference_steps=gen_config.num_inference_steps,
                                 guidance_scale=gen_config.guidance_scale,
                                 latents=gen_config.latents,
-                                generator=generator,
                                 **extra
                             ).images[0]
                         else:
-                            img = pipeline(
-                                prompt_embeds=conditional_embeds.text_embeds,
-                                pooled_prompt_embeds=conditional_embeds.pooled_embeds,
-                                # negative_prompt_embeds=unconditional_embeds.text_embeds,
-                                # negative_pooled_prompt_embeds=unconditional_embeds.pooled_embeds,
-                                height=gen_config.height,
-                                width=gen_config.width,
-                                num_inference_steps=gen_config.num_inference_steps,
-                                guidance_scale=gen_config.guidance_scale,
-                                latents=gen_config.latents,
-                                generator=generator,
-                                **extra
-                            ).images[0]
+                            if usei2v == 0:
+                                img = pipeline(
+                                    prompt_embeds=conditional_embeds.text_embeds,
+                                    pooled_prompt_embeds=conditional_embeds.pooled_embeds,
+                                    # negative_prompt_embeds=unconditional_embeds.text_embeds,
+                                    # negative_pooled_prompt_embeds=unconditional_embeds.pooled_embeds,
+                                    height=gen_config.height,
+                                    width=gen_config.width,
+                                    num_inference_steps=gen_config.num_inference_steps,
+                                    guidance_scale=gen_config.guidance_scale,
+                                    latents=gen_config.latents,
+                                    **extra
+                                ).images[0]
+
+                            else:
+                                def interpolate_grid(source, m=4, n=16):
+                                    from PIL import Image
+                                    width, height = source.width, source.height
+                                    cell_width = width // n
+                                    cell_height = height // m
+
+                                    new_image = Image.new('RGB', (width, height))
+
+                                    reference_cells = []
+                                    for i in range(m):
+                                        cell = source.crop((0, i * cell_height, cell_width, (i + 1) * cell_height))
+                                        reference_cells.append(cell)
+
+                                    for i in range(m):  # 
+                                        for j in range(n):  # 
+                                            if j == 0:
+                                                new_image.paste(reference_cells[i], (0, i * cell_height))
+                                                continue
+
+                                            weight_next = j / n  
+                                            weight_curr = 1 - weight_next
+
+                                            if i < m - 1:
+                                                curr_ref = np.array(reference_cells[i])
+                                                next_ref = np.array(reference_cells[i + 1])
+                                            else:
+                                                curr_ref = np.array(reference_cells[i])
+                                                next_ref = np.array(reference_cells[0])
+
+                                            interpolated = (curr_ref * weight_curr + next_ref * weight_next).astype(
+                                                np.uint8)
+                                            cell = Image.fromarray(interpolated)
+
+                                            new_image.paste(cell, (j * cell_width, i * cell_height))
+
+                                    return new_image
+
+                                def process_image(image_path, m=8, n=8):
+                                    from PIL import Image
+                                    source = Image.open(image_path)
+                                    width, height = source.width, source.height
+
+                                    sub_width = width // n
+                                    sub_height = height // m
+
+                                    top_left = source.crop((0, 0, sub_width, sub_height))
+
+                                    new_image = Image.new('RGB', (width, height))
+
+                                    for i in range(m):
+                                        for j in range(n):
+                                            new_image.paste(top_left, (j * sub_width, i * sub_height))
+
+                                    return new_image
+
+                                def create_8x8_grid(img_url):
+                                    source_img = load_image(img_url)
+                                    
+                                    source_array = np.array(source_img)
+
+                                    h, w = source_array.shape[:2]
+                                    
+                                    grid = np.zeros((h * 8, w * 8, 3), dtype=source_array.dtype)
+
+                                    for i in range(8):
+                                        for j in range(8):
+                                            grid[i * h:(i + 1) * h, j * w:(j + 1) * w] = source_array
+
+                                    return Image.fromarray(grid)
+                                    
+                                from diffusers.utils import load_image
+                                import numpy as np
+                                import cv2
+                                from PIL import Image
+
+                                h = gen_config.height
+                                w = gen_config.width
+
+                                #---------------------------------------
+                                usemask = 1
+                                mode = 'glo'
+                                line = 800
+                                blocks_to_set = [(0, 0)]
+
+                                if mode == 'I2MV':
+                                    from PIL import Image
+
+                                    image_paths = [
+                                        "/path/to/your/refimage.jpg",
+                                    ]
+
+                                    img_url = image_paths[i % len(image_paths)] 
+                                    line = 1000
+                                    strength = 0.9
+                                    m, n = 4, 6
+                                    source = load_image(img_url)
+                                    if i < 20:
+                                        strength = 0.95
+                                        source = process_image(img_url,m,n)
+                                    elif i < 40:
+                                        strength = 0.95
+                                        source = interpolate_grid(source, m, n)
+                                    width, height = source.width, source.height
+
+                                elif mode == 'glo':
+                                    img_url = "path/to/your/refimage.jpg"
+                                    source = load_image(img_url)
+                                    line = -1
+                                    iii = i // 6
+                                    strength = 0.8 - iii * 0.05
+                                    print(f"strength = {strength}")
+                                    m, n = 4, 6
+                                    blocks_to_set = []
+                                    width, height = source.width, source.height
+
+                                width, height = source.width, source.height
+
+                                if usemask == 1:
+                                    mask = np.ones((height, width), dtype=np.uint8)
+                                    block_height = height // m
+                                    block_width = width // n
+
+                                    for row, col in blocks_to_set:
+                                        mask[row * block_height:(row + 1) * block_height,
+                                        col * block_width:(col + 1) * block_width] = 0
+                                else:
+                                    print("NO MASK")
+                                    
+                                print(f"chosen image: {img_url} | mask: {blocks_to_set}")
+
+                                img = pipeline(
+                                    prompt_embeds=conditional_embeds.text_embeds,
+                                    pooled_prompt_embeds=conditional_embeds.pooled_embeds,
+                                    height=h,
+                                    width=w,
+                                    num_inference_steps=gen_config.num_inference_steps,
+                                    guidance_scale=gen_config.guidance_scale,
+                                    latents=gen_config.latents,
+                                    image=source,
+                                    mask_image=mask,
+                                    strength=strength,
+                                    # line=line,
+                                    **extra
+                                ).images[0]
                     elif self.is_pixart:
                         # needs attention masks for some reason
                         img = pipeline(
@@ -1359,7 +1185,6 @@ class StableDiffusion:
                             num_inference_steps=gen_config.num_inference_steps,
                             guidance_scale=gen_config.guidance_scale,
                             latents=gen_config.latents,
-                            generator=generator,
                             **extra
                         ).images[0]
                     elif self.is_auraflow:
@@ -1381,7 +1206,6 @@ class StableDiffusion:
                             num_inference_steps=gen_config.num_inference_steps,
                             guidance_scale=gen_config.guidance_scale,
                             latents=gen_config.latents,
-                            generator=generator,
                             **extra
                         ).images[0]
                     else:
@@ -1395,7 +1219,6 @@ class StableDiffusion:
                             num_inference_steps=gen_config.num_inference_steps,
                             guidance_scale=gen_config.guidance_scale,
                             latents=gen_config.latents,
-                            generator=generator,
                             **extra
                         ).images[0]
 
@@ -1421,13 +1244,12 @@ class StableDiffusion:
                             guidance_rescale=grs,
                             denoising_start=gen_config.refiner_start_at,
                             denoising_end=gen_config.num_inference_steps,
-                            image=img.unsqueeze(0),
-                            generator=generator,
+                            image=img.unsqueeze(0)
                         ).images[0]
 
                     gen_config.save_image(img, i)
-                    gen_config.log_image(img, i)
-                    flush()
+
+
 
                 if self.adapter is not None and isinstance(self.adapter, ReferenceAdapter):
                     self.adapter.clear_memory()
@@ -1462,12 +1284,6 @@ class StableDiffusion:
                 self.assistant_lora.force_to('cpu', self.torch_dtype)
             else:
                 self.assistant_lora.is_active = True
-                
-        if self.model_config.inference_lora_path is not None:
-            print("Unloading inference lora")
-            self.assistant_lora.is_active = False
-            # move weights off the device
-            self.assistant_lora.force_to('cpu', self.torch_dtype)
 
         flush()
 
@@ -1559,6 +1375,8 @@ class StableDiffusion:
         noisy_latents = torch.cat(noisy_latents_chunks, dim=0)
         return noisy_latents
 
+
+
     def predict_noise(
             self,
             latents: torch.Tensor,
@@ -1573,11 +1391,39 @@ class StableDiffusion:
             detach_unconditional=False,
             rescale_cfg=None,
             return_conditional_pred=False,
-            guidance_embedding_scale=1.0,
-            bypass_guidance_embedding=False,
             **kwargs,
     ):
         conditional_pred = None
+
+        def interpolate_latents(latent_model_input_packed, m=4, n=16):
+
+            b, seq_len, embed_dim = latent_model_input_packed.shape
+
+            tokens_per_cell = seq_len // (m * n)
+
+            grid = latent_model_input_packed.view(b, m, n, tokens_per_cell, embed_dim)
+
+            reference_points = grid[:, :, 0:1, :, :]
+
+            result = torch.zeros_like(grid)
+
+            result[:, :, 0:1, :, :] = reference_points
+
+            for i in range(m):  
+                for j in range(1, n): 
+                    weight_next = j / n  
+                    weight_curr = 1 - weight_next
+
+                    curr_ref = reference_points[:, i, 0, :, :]  # [b, tokens_per_cell, embed_dim]
+                    next_ref = reference_points[:, (i + 1) % m, 0, :, :] 
+
+                    result[:, i, j, :, :] = (
+                            curr_ref * weight_curr +
+                            next_ref * weight_next
+                    )
+
+            return result.view(b, seq_len, embed_dim)
+
         # get the embeddings
         if text_embeddings is None and conditional_embeddings is None:
             raise ValueError("Either text_embeddings or conditional_embeddings must be specified")
@@ -1834,6 +1680,7 @@ class StableDiffusion:
                 if self.is_flux:
                     with torch.no_grad():
 
+
                         bs, c, h, w = latent_model_input.shape
                         latent_model_input_packed = rearrange(
                             latent_model_input,
@@ -1842,28 +1689,53 @@ class StableDiffusion:
                             pw=2
                         )
 
+                        # latent_model_input_packed = interpolate_latents(latent_model_input_packed)
+
+                        #-----------------------------------------------------------------------------------------------
                         img_ids = torch.zeros(h // 2, w // 2, 3)
+
+                        # num_parts = 8
+                        # if (h / 2) % num_parts == 0:
+                        #     row_indices = torch.arange(h // 2 // num_parts)[:, None] 
+                        #     row_indices = row_indices.repeat(num_parts, 1) 
+                        #     img_ids[..., 1] = img_ids[..., 1] + row_indices
+                        # else:
+                        #     img_ids[..., 1] = img_ids[..., 1] + torch.arange(h // 2)[:, None]
+                        #     print("Error: 'h / 2 / num_parts' does not divide evenly.")
+                        #
+                        #
+                        # row_indices = torch.arange(h // 2 // num_parts)[:, None] 
+                        # row_indices = row_indices.repeat(num_parts, 1)  
+
+                        # row_indices2 = torch.arange(w // 2 // num_parts)[None, :]  
+                        # row_indices2 = row_indices2.repeat(num_parts, 1) 
+                        # row_indices2 = row_indices2.flatten()
+                        # # # print(row_indices)
+                        # # # print(row_indices2)
+                        # img_ids[..., 1] = img_ids[..., 1] + row_indices
+                        # # # print(img_ids)
+                        # img_ids[..., 2] = img_ids[..., 2] + row_indices2
+
+
                         img_ids[..., 1] = img_ids[..., 1] + torch.arange(h // 2)[:, None]
                         img_ids[..., 2] = img_ids[..., 2] + torch.arange(w // 2)[None, :]
+
                         img_ids = repeat(img_ids, "h w c -> b (h w) c", b=bs).to(self.device_torch)
+                        # print(f"ids h {h} w {w}")
 
                         txt_ids = torch.zeros(bs, text_embeddings.text_embeds.shape[1], 3).to(self.device_torch)
 
                         # # handle guidance
+                        guidance_scale = 1.0  # ?
                         if self.unet.config.guidance_embeds:
-                            if isinstance(guidance_embedding_scale, list):
-                                guidance = torch.tensor(guidance_embedding_scale, device=self.device_torch)
-                            else:
-                                guidance = torch.tensor([guidance_embedding_scale], device=self.device_torch)
-                                guidance = guidance.expand(latents.shape[0])
+                            guidance = torch.tensor([guidance_scale], device=self.device_torch)
+                            guidance = guidance.expand(latents.shape[0])
                         else:
                             guidance = None
-                    
-                    if bypass_guidance_embedding:
-                        bypass_flux_guidance(self.unet)
 
                     cast_dtype = self.unet.dtype
                     # with torch.amp.autocast(device_type='cuda', dtype=cast_dtype):
+                    # print("enter into unet")
                     noise_pred = self.unet(
                         hidden_states=latent_model_input_packed.to(self.device_torch, cast_dtype),  # [1, 4096, 64]
                         # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
@@ -1891,9 +1763,6 @@ class StableDiffusion:
                         pw=2,
                         c=latent_model_input.shape[1],
                     )
-                    
-                    if bypass_guidance_embedding:
-                        restore_flux_guidance(self.unet)
                 elif self.is_v3:
                     noise_pred = self.unet(
                         hidden_states=latent_model_input.to(self.device_torch, self.torch_dtype),
@@ -1902,8 +1771,6 @@ class StableDiffusion:
                         pooled_projections=text_embeddings.pooled_embeds.to(self.device_torch, self.torch_dtype),
                         **kwargs,
                     ).sample
-                    if isinstance(noise_pred, QTensor):
-                        noise_pred = noise_pred.dequantize()
                 elif self.is_auraflow:
                     # aura use timestep value between 0 and 1, with t=1 as noise and t=0 as the image
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -2032,10 +1899,12 @@ class StableDiffusion:
 
             # if not last step, and bleeding, bleed in some latents
             if bleed_latents is not None and timestep != self.noise_scheduler.timesteps[-1]:
+                print(f"bleed_ratio: {bleed_ratio}")
                 latents = (latents * (1 - bleed_ratio)) + (bleed_latents * bleed_ratio)
 
             # only skip first scaling
             is_input_scaled = False
+        print(f"bleed_ratio: {bleed_ratio}")
 
         # return latents_steps
         if return_first_prediction:
@@ -2145,16 +2014,11 @@ class StableDiffusion:
                 self.text_encoder,
                 prompt,
                 truncate=not long_prompts,
-                max_length=256,
+                max_length=77,  # todo set this higher when not transfer learning
                 dropout_prob=dropout_prob
             )
-            
-            # just mask the attention mask
-            prompt_attention_mask = attention_mask.unsqueeze(-1).expand(embeds.shape)
-            embeds = embeds * prompt_attention_mask.to(dtype=embeds.dtype, device=embeds.device)
             return PromptEmbeds(
                 embeds,
-                
                 # do we want attn mask here?
                 # attention_mask=attention_mask,
             )
@@ -2331,22 +2195,38 @@ class StableDiffusion:
                     named_params[name] = param
         if unet:
             if self.is_flux:
-                for name, param in self.unet.named_parameters(recurse=True, prefix="transformer"):
+                # Just train the middle 2 blocks of each transformer block
+                # block_list = []
+                # num_transformer_blocks = 2
+                # start_block = len(self.unet.transformer_blocks) // 2 - (num_transformer_blocks // 2)
+                # for i in range(num_transformer_blocks):
+                #     block_list.append(self.unet.transformer_blocks[start_block + i])
+                #
+                # num_single_transformer_blocks = 4
+                # start_block = len(self.unet.single_transformer_blocks) // 2 - (num_single_transformer_blocks // 2)
+                # for i in range(num_single_transformer_blocks):
+                #     block_list.append(self.unet.single_transformer_blocks[start_block + i])
+                #
+                # for block in block_list:
+                #     for name, param in block.named_parameters(recurse=True, prefix=f"{SD_PREFIX_UNET}"):
+                #         named_params[name] = param
+
+                # train the guidance embedding
+                # if self.unet.config.guidance_embeds:
+                #     transformer: FluxTransformer2DModel = self.unet
+                #     for name, param in transformer.time_text_embed.named_parameters(recurse=True,
+                #                                                                     prefix=f"{SD_PREFIX_UNET}"):
+                #         named_params[name] = param
+
+                for name, param in self.unet.transformer_blocks.named_parameters(recurse=True,
+                                                                                 prefix=f"{SD_PREFIX_UNET}"):
+                    named_params[name] = param
+                for name, param in self.unet.single_transformer_blocks.named_parameters(recurse=True,
+                                                                                        prefix=f"{SD_PREFIX_UNET}"):
                     named_params[name] = param
             else:
                 for name, param in self.unet.named_parameters(recurse=True, prefix=f"{SD_PREFIX_UNET}"):
                     named_params[name] = param
-            
-            if self.model_config.ignore_if_contains is not None:
-                # remove params that contain the ignore_if_contains from named params
-                for key in list(named_params.keys()):
-                    if any([s in key for s in self.model_config.ignore_if_contains]):
-                        del named_params[key]
-            if self.model_config.only_if_contains is not None:
-                # remove params that do not contain the only_if_contains from named params
-                for key in list(named_params.keys()):
-                    if not any([s in key for s in self.model_config.only_if_contains]):
-                        del named_params[key]
 
         if refiner:
             for name, param in self.refiner_unet.named_parameters(recurse=True, prefix=f"{SD_PREFIX_REFINER_UNET}"):
@@ -2435,6 +2315,12 @@ class StableDiffusion:
         # saving in diffusers format
         if not output_file.endswith('.safetensors'):
             # diffusers
+            # if self.is_pixart:
+            #     self.unet.save_pretrained(
+            #         save_directory=output_file,
+            #         safe_serialization=True,
+            #     )
+            # else:
             if self.is_flux:
                 # only save the unet
                 transformer: FluxTransformer2DModel = self.unet
@@ -2745,10 +2631,3 @@ class StableDiffusion:
             }
 
         self.set_device_state(state)
-
-    def text_encoder_to(self, *args, **kwargs):
-        if isinstance(self.text_encoder, list):
-            for encoder in self.text_encoder:
-                encoder.to(*args, **kwargs)
-        else:
-            self.text_encoder.to(*args, **kwargs)
