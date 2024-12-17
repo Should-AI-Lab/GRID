@@ -146,7 +146,7 @@ Training can be interrupted safely (except during checkpoint saving) and will re
 
 ## Benchmarks
 [Performance comparison charts]
-
+![image](https://github.com/user-attachments/assets/9dbac970-19c9-4193-b240-7ed50b6f483f)
 ## TODO
 - [x] Release the paper
 - [x] Release the training codes and demo
