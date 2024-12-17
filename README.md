@@ -163,7 +163,7 @@ Quantitative comparison of Multi-view Generation Results on Text-to-Multyview, I
 
 ## TODO
 - [x] Release the paper
-- [x] Release the training codes and demo
+- [ ] Release the training codes and demo
 - [ ] Update the project page
 - [ ] Release the model weights
 
@@ -174,6 +174,8 @@ Quantitative comparison of Multi-view Generation Results on Text-to-Multyview, I
 
 ## Citation
 
+## Contact
+wancong@stu.xjtu.edu.cn
 
 ## License
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
