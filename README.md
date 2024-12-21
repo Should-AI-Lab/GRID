@@ -2,7 +2,7 @@
 # GridShow: Omni Visual Generation 
 The official implementation of work "GridShow: Omni Visual Generation".
 
-[![arXiv](https://img.shields.io/badge/arXiv-[paper_id]-b31b1b.svg)](https://arxiv.org/abs/2412.10718)
+[![arXiv](https://img.shields.io/badge/arXiv-2412.10718-b31b1b.svg)](https://arxiv.org/abs/2412.10718)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## Overview
@@ -163,7 +163,12 @@ Training can be interrupted safely (except during checkpoint saving) and will re
 - Release the paper
 
 ## Citation
-
+@article{wan2024grid,
+  title={GRID: Visual Layout Generation},
+  author={Wan, Cong and Luo, Xiangyang and Cai, Zijian and Song, Yiren and Zhao, Yunlong and Bai, Yifan and He, Yuhang and Gong, Yihong},
+  journal={arXiv preprint arXiv:2412.10718},
+  year={2024}
+}
 
 
 
