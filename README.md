@@ -163,13 +163,14 @@ Training can be interrupted safely (except during checkpoint saving) and will re
 - Release the paper
 
 ## Citation
+```bash
 @article{wan2024grid,
   title={GRID: Visual Layout Generation},
   author={Wan, Cong and Luo, Xiangyang and Cai, Zijian and Song, Yiren and Zhao, Yunlong and Bai, Yifan and He, Yuhang and Gong, Yihong},
   journal={arXiv preprint arXiv:2412.10718},
   year={2024}
 }
-
+```
 
 
 
